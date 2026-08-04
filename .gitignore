@@ -1,0 +1,42 @@
+# Prerequisites
+*.d.ts
+
+# Compiled output
+/dist
+/build
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Runtime data and state caches
+.pnpm-debug.log*
+.pnpm-store/
+node_modules/
+.pnpm-lock.yaml
+
+# Local Environment Variables and Secrets
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+.secret
+
+# Terraform specific paths
+.terraform/
+*.tfstate
+*.tfstate.backup
+
+# IDE configurations
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.DS_Store
