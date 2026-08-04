@@ -1,0 +1,22 @@
+// ==============================================================================
+// DeployFlow Core Engine Database Blueprint Configuration
+// Source Source of Truth Data Mapping Declarations
+// ==============================================================================
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Technical Placeholder Model ensuring compiler baseline initialization capability
+model DatabaseValidationStub {
+  id        String   @id @default(uuid())
+  status    String   @default("INITIALIZED")
+  createdAt DateTime @default(now())
+
+  @@map("database_validation_stubs")
+}

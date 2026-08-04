@@ -1,0 +1,19 @@
+{
+  "name": "deployflow",
+  "version": "1.0.0",
+  "description": "Enterprise DevOps Platform Engineering Project Workload",
+  "main": "src/server.ts",
+  "type": "module",
+  "scripts": {
+    "dev": "node --experimental-strip-types src/server.ts",
+    "start": "node --experimental-strip-types src/server.ts",
+    "seed": "node --experimental-strip-types prisma/seed.ts"
+  },
+  "keywords": [
+    "devops",
+    "platform-engineering",
+    "node"
+  ],
+  "author": "DeployFlow Authors",
+  "license": "MIT"
+}
