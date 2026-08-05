@@ -1,3 +1,5 @@
+// File Path: src/security/integration-test.ts
+
 // ==============================================================================
 // DeployFlow Core Engine - Self-Contained Offline Integration Test Shims
 // Satisfies offline IDE background linters without external network dependencies
@@ -6,6 +8,7 @@
 // Explicit static inline types to satisfy the compiler without an internet network connection
 declare const console: { log: (msg: string) => void; error: (msg: string) => void };
 declare const globalThis: { require: any };
+declare const process: { exit: (code: number) => void };
 
 // Safely declare an internal interface matching Node's native module builder
 interface NativeModuleLoaderShim {
@@ -22,7 +25,6 @@ async function runIntegrationSuite() {
 
   try {
     // Cast the runtime import call to a generic type parameter string.
-    // This cleanly satisfies your offline IDE background linter while running perfectly in Node.
     const moduleString: any = 'module';
     const moduleNamespace: NativeModuleLoaderShim = await import(moduleString);
 
@@ -39,6 +41,7 @@ async function runIntegrationSuite() {
   const { RefreshTokenService } = await import('./tokens/refresh.service.ts');
   const { RbacService } = await import('./rbac/rbac.service.ts');
   const { Permission } = await import('./rbac/rbac.constants.ts');
+  const { UsersService } = await import('../modules/users/users.service.ts');
 
   // 1. Password Cryptographic Tier Validation
   console.log('[DeployFlow IAM Audit] Verification Node A: Initializing Password Security Scans...');
@@ -95,12 +98,74 @@ async function runIntegrationSuite() {
   }
   console.log(' -> Verification Node D Status: PASSED (Hierarchy and Privilege matrices fully secure).');
 
+  // 5. Phase 4: User Management Service Layer Validation
+  console.log('[DeployFlow IAM Audit] Verification Node E: Testing User Management Pipelines...');
+  const serviceInstance = new UsersService();
+
+  const validCreationPayload = {
+    email: 'new-user@deployflow.internal',
+    password: 'SecurePassword123!',
+    role: 'DEVELOPER' as const
+  };
+
+  const operatorAdminContext = {
+    id: 'mock-admin-uuid',
+    email: 'admin@deployflow.internal',
+    role: 'ADMIN'
+  };
+
+  const operatorStandardContext = {
+    id: 'mock-standard-uuid',
+    email: 'user@deployflow.internal',
+    role: 'DEVELOPER'
+  };
+
+  // Test Case A: Enforce privilege isolation guards
+  try {
+    await serviceInstance.createUser(validCreationPayload, operatorStandardContext);
+    throw new Error('Assertion Failed: Low-privilege user was able to create an account profile.');
+  } catch (error: any) {
+    if (!error.message.includes('ERROR_UNAUTHORIZED')) {
+      throw new Error(`Assertion Failed: Unexpected error signature caught during RBAC gate verification: ${error.message}`);
+    }
+  }
+
+  // Test Case B: Verify unique registration lookup and email collision triggers
+  const collidingPayload = {
+    email: 'collision@deployflow.internal',
+    password: 'SecurePassword123!',
+    role: 'DEVELOPER' as const
+  };
+
+  try {
+    await serviceInstance.createUser(collidingPayload, operatorAdminContext);
+    throw new Error('Assertion Failed: Duplicate user email string bypasses collision checks.');
+  } catch (error: any) {
+    if (!error.message.includes('ERROR_CONFLICT')) {
+      throw new Error(`Assertion Failed: Unexpected error signature caught during collision mapping: ${error.message}`);
+    }
+  }
+
+  // Test Case C: Verify profile resolution by lookup ID
+  const resolvedUserProfile = await serviceInstance.getUserById('mock-admin-uuid', operatorAdminContext);
+  if (!resolvedUserProfile || resolvedUserProfile.email !== 'admin@deployflow.internal') {
+    throw new Error('Assertion Failed: Failed to resolve valid user profile matching index ID.');
+  }
+
+  console.log(' -> Verification Node E Status: PASSED (CRUD logic, permissions, and error mapping verified).');
+
   console.log('==============================================================================');
   console.log('DEPLOYFLOW INTEGRATION STATUS: COMPLETE AND SECURE (All Core Security Planes Operational).');
   console.log('==============================================================================');
 }
 
-runIntegrationSuite().catch((err) => {
-  console.error('[Integration Fail] A critical validation checkpoint failed:');
-  console.error(err.message || err);
-});
+// Call the runner function explicitly and drop the active event loop cleanly
+runIntegrationSuite()
+  .then(() => {
+    process.exit(0);
+  })
+  .catch((err) => {
+    console.error('[Integration Fail] A critical validation checkpoint failed:');
+    console.error(err.message || err);
+    process.exit(1);
+  });

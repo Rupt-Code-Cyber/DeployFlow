@@ -1,4 +1,5 @@
-import { getPrismaClient } from "../lib/prisma/client.js";
+// Enforce the explicit .ts extension to resolve the module path flawlessly offline
+import { getPrismaClient } from "../lib/prisma/client.ts";
 
 export interface CreateTokenInput {
   userId: string;

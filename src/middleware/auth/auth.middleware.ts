@@ -1,4 +1,5 @@
-import { JwtService, VerifiedTokenClaims } from '../../security/jwt/jwt.service.ts';
+import { JwtService } from '../../security/jwt/jwt.service.ts';
+import type { VerifiedTokenClaims } from '../../security/jwt/jwt.service.ts';
 import { UserRepository } from '../../repositories/user.repository.ts';
 
 // Explicit static type override for the console object
