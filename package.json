@@ -7,7 +7,10 @@
   "scripts": {
     "dev": "node --experimental-strip-types src/server.ts",
     "start": "node --experimental-strip-types src/server.ts",
-    "seed": "node --experimental-strip-types prisma/seed.ts"
+    "seed": "node --experimental-strip-types prisma/seed.ts",
+    "test": "node --experimental-strip-types node_modules/vitest/vitest.mjs run",
+    "test:watch": "node --experimental-strip-types node_modules/vitest/vitest.mjs",
+    "test:coverage": "node --experimental-strip-types node_modules/vitest/vitest.mjs run --coverage"
   },
   "keywords": [
     "devops",
