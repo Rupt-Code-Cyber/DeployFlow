@@ -1,6 +1,8 @@
 // File Path: src/modules/system/system.service.ts
 
 import { getPrismaClient } from '../../lib/prisma/client.js';
+// Phase 7 Cache Integration: Load the infrastructure health monitor
+import { CacheService } from '../../cache/cache.service.ts';
 
 // Explicit inline type block declaration to satisfy sandboxed TypeScript linters
 declare const process: {
@@ -20,6 +22,7 @@ declare const process: {
 
 export class SystemService {
   private prisma = getPrismaClient();
+  private cache = new CacheService();
   private appVersion = '1.0.0';
 
   /**
@@ -112,10 +115,13 @@ export class SystemService {
 
   /**
    * Performs deep evaluation scans against vital system infrastructure targets.
+   * Hardened to monitor both relational persistence and active caching fabrics concurrently.
    */
-  public async getReadinessSnapshot(): Promise<{ status: 'UP' | 'DOWN'; timestamp: string; checks: { database: 'UP' | 'DOWN' } }> {
+  public async getReadinessSnapshot(): Promise<{ status: 'UP' | 'DOWN'; timestamp: string; checks: { database: 'UP' | 'DOWN'; cache: 'UP' | 'DOWN' } }> {
     let databaseStatus: 'UP' | 'DOWN' = 'DOWN';
+    let cacheStatus: 'UP' | 'DOWN' = 'DOWN';
 
+    // 1. Run the relational PostgreSQL handshake probe loop
     try {
       if (this.prisma.user && typeof this.prisma.user.findFirst === 'function') {
         await this.prisma.user.findFirst({ where: { id: '00000000-0000-0000-0000-000000000000' } });
@@ -124,19 +130,27 @@ export class SystemService {
       } else {
         await (this.prisma as any).query('SELECT 1');
       }
-
       databaseStatus = 'UP';
     } catch (dbError) {
       databaseStatus = 'DOWN';
     }
 
-    const overallStatus = databaseStatus === 'UP' ? 'UP' : 'DOWN';
+    // 2. Run the distributed Redis cluster RAM socket check
+    try {
+      cacheStatus = await this.cache.verifyCacheHealth();
+    } catch (cacheError) {
+      cacheStatus = 'DOWN';
+    }
+
+    // Both dependent systems must report clean operational variables to pass the readiness probe
+    const overallStatus = databaseStatus === 'UP' && cacheStatus === 'UP' ? 'UP' : 'DOWN';
 
     return {
       status: overallStatus,
       timestamp: new Date().toISOString(),
       checks: {
-        database: databaseStatus
+        database: databaseStatus,
+        cache: cacheStatus
       }
     };
   }

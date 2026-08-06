@@ -1,6 +1,8 @@
 // File Path: src/modules/system/system.controller.ts
 
 import { SystemService } from './system.service.ts';
+// Import the metrics collector to pull live hit/miss data
+import { CacheMetricsCollector } from '../../cache/cache.metrics.ts';
 
 export class SystemController {
   private systemService = new SystemService();
@@ -43,7 +45,7 @@ export class SystemController {
       reply.code(503).send({
         status: 'DOWN',
         timestamp: new Date().toISOString(),
-        checks: { database: 'DOWN' }
+        checks: { database: 'DOWN', cache: 'DOWN' }
       });
     }
   }
@@ -103,19 +105,23 @@ export class SystemController {
 
   /**
    * Compiles and handles text streams for Prometheus telemetry scraping architectures.
+   * Merges system process counters with memory cache performance metrics.
    */
   public async handleMetricsQuery(request: any, reply: any): Promise<void> {
     try {
-      const plaintextMetrics = this.systemService.getPrometheusMetricsText();
+      const systemMetrics = this.systemService.getPrometheusMetricsText();
+      const cacheMetrics = CacheMetricsCollector.generatePrometheusExpositionText();
+
+      // Combine both telemetry datasets into a single unmasked string pipeline
+      const unifiedMetricsPayload = `${systemMetrics}\n${cacheMetrics}`;
 
       reply
         .code(200)
         .header('Cache-Control', 'no-store, no-cache, must-revalidate')
-        // Explicitly set the text exposition format header standard required by Prometheus
         .header('Content-Type', 'text/plain; version=0.0.4; charset=utf-8')
-        .send(plaintextMetrics);
+        .send(unifiedMetricsPayload);
     } catch (error) {
-      reply.code(500).header('Content-Type', 'text/plain').send('# ERROR: Failed to compile telemetry track variables.');
+      reply.code(500).header('Content-Type', 'text/plain').send('# ERROR: Failed to compile unified telemetry metrics.');
     }
   }
 }
