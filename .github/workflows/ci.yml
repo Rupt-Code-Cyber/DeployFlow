@@ -1,0 +1,83 @@
+name: Continuous Integration
+
+on:
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ main ]
+
+# Enforce strict global concurrency rules to terminate redundant runs instantly
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Set zero-trust permission properties globally at the top level
+permissions:
+  contents: read
+
+jobs:
+  test-and-validate:
+    name: Code Verification & Automated Testing
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15 # Enforce timeout windows to block infinite runtime loops
+    
+    permissions:
+      contents: read
+
+    services:
+      postgres:
+        image: postgres:16.4-alpine
+        env:
+          POSTGRES_USER: test_api_user
+          POSTGRES_PASSWORD: test_secure_password_2026
+          POSTGRES_DB: deployflow_test_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U test_api_user -d deployflow_test_db"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7.4-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+
+    steps:
+      - name: Checkout Code Repository
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+
+      - name: Setup Node.js Runtime Environment
+        uses: actions/setup-node@1e60f620b9541d16bece96c54097223b7ee0055c # v4.0.3
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install Project Dependencies with Integrity Auditing
+        run: npm ci --audit
+
+      - name: Execute TypeScript Compilation & Type Check
+        run: npx tsc --noEmit
+
+      - name: Verify Prisma Schema Integrity
+        run: npx prisma validate
+
+      - name: Sync Database Schema Structure
+        run: npx prisma db push
+        env:
+          DATABASE_URL: postgresql://test_api_user:test_secure_password_2026@localhost:5432/deployflow_test_db?schema=public
+
+      - name: Run Complete Test Suite & Enforce Coverage Quality Gates
+        run: npm test -- --coverage
+        env:
+          NODE_ENV: test
+          PORT: 3000
+          HOST: localhost
+          DATABASE_URL: postgresql://test_api_user:test_secure_password_2026@localhost:5432/deployflow_test_db?schema=public
+          REDIS_URL: redis://localhost:6379/0

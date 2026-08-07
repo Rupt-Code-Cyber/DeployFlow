@@ -1,0 +1,109 @@
+name: Continuous Delivery
+
+on:
+  push:
+    branches: [ main ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Set zero-trust permission properties globally at the top level
+permissions:
+  contents: read
+
+jobs:
+  build-validate-publish:
+    name: Build, Validate & Publish OCI Container Image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20 # Enforce strict timeouts on image packaging operations
+    
+    # Declare explicit minimum write capabilities required for delivery operations
+    permissions:
+      contents: write
+      packages: write
+
+    steps:
+      - name: Checkout Code Repository
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+        with:
+          fetch-depth: 0
+
+      - name: Setup Docker Buildx Compiler
+        uses: docker/setup-buildx-action@988b5a0280414fbc2124b1ca140a5c37d0686ebd # v3.6.1
+
+      - name: Build Local Validation Image
+        uses: docker/build-push-action@5cd11c3a4ace9051d55c9ae25a7442347240c01b # v6.5.0
+        with:
+          context: .
+          file: docker/production/Dockerfile
+          tags: deployflow:test-validate
+          push: false
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Execute Live Container Validation Gate
+        run: |
+          echo "[!] Launching validation container instance..."
+          docker run -d --name validation_test -p 3000:3000 deployflow:test-validate
+          
+          echo "[!] Verifying execution context permissions..."
+          RUNNING_UID=$(docker exec validation_test id -u)
+          if [ "$RUNNING_UID" != "10001" ]; then
+            echo "[ERROR] Security Breach: Container is executing as root!"
+            exit 1
+          fi
+          
+          echo "[!] Polling health endpoint availability..."
+          HEALTH_PASSED=false
+          for i in $(seq 1 10); do
+            if curl -s -f http://localhost:3000/api/v1/system/health > /dev/null; then
+              echo "[+] Health verification gate cleared successfully!"
+              HEALTH_PASSED=true
+              break
+            fi
+            sleep 2
+          done
+          
+          if [ "$HEALTH_PASSED" = "false" ]; then
+            echo "[ERROR] Health Check Failed!"
+            exit 1
+          fi
+
+      - name: Tear Down Validation Artifacts
+        if: always()
+        run: docker rm -f validation_test 2>/dev/null || true
+
+      - name: Run Automated Semantic Release Target Analysis
+        id: semantic_release
+        uses: cycjimmy/semantic-release-action@cb425ad62e74288b201d16781200155b40d463d8 # v4.1.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Authenticate to GitHub Container Registry
+        uses: docker/login-action@0d12469e4bf6b3f26795b2160536f7244a564da1 # v3.3.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract OCI Container Image Metadata
+        id: meta
+        uses: docker/metadata-action@8e1d4474248f9a1be3bc3e1250f61286c26cc64d # v5.5.1
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=raw,value=latest
+            type=sha,prefix=sha-,format=long
+            type=raw,value=${{ steps.semantic_release.outputs.new_release_version }},enable=${{ steps.semantic_release.outputs.new_release_published == 'true' }}
+
+      - name: Publish Verified OCI Image to GitHub Registry
+        uses: docker/build-push-action@5cd11c3a4ace9051d55c9ae25a7442347240c01b # v6.5.0
+        with:
+          context: .
+          file: docker/production/Dockerfile
+          tags: ${{ steps.meta.outputs.tags }}
+          push: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
