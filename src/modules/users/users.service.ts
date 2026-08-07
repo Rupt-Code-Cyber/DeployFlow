@@ -1,6 +1,5 @@
 // File Path: src/modules/users/users.service.ts
 
-// Completely removed the problematic Node imports to ensure immediate compilation safety
 import { UsersRepository } from './users.repository.ts';
 import { UsersValidator } from './users.validator.ts';
 import { PasswordUtility } from '../../security/crypto/password.ts';
@@ -8,6 +7,10 @@ import { AuditLogRepository } from '../../repositories/audit-log.repository.ts';
 import { RbacService } from '../../security/rbac/rbac.service.ts';
 import { Permission } from '../../security/rbac/rbac.constants.ts';
 import type { CreateUserDto, UpdateUserDto, UserFilterQueryDto, UserPaginationQueryDto } from './users.dto.ts';
+
+// Phase 7 Cache Layer Infrastructure Imports
+import { CacheService } from '../../cache/cache.service.ts';
+import { CacheKeys } from '../../cache/cache.keys.ts';
 
 // Explicit static type override for the console object
 declare const console: { log: (msg: string) => void; error: (msg: string) => void };
@@ -18,6 +21,7 @@ declare const console: { log: (msg: string) => void; error: (msg: string) => voi
 export class UsersService {
   private repo: UsersRepository;
   private auditRepo: AuditLogRepository;
+  private cache = new CacheService();
 
   constructor(customRepo?: UsersRepository, customAuditRepo?: AuditLogRepository) {
     this.repo = customRepo || new UsersRepository();
@@ -45,9 +49,8 @@ export class UsersService {
       }
 
       // Compilation-safe high-entropy token derivation string mechanics
-      // Completely eliminates native 'crypto' dependencies to bypass compilation blockages
       const randomEntropyString = Math.random().toString(36).substring(2) + Date.now().toString(36);
-      const targetPassword = payload.password || `Fallback!${randomEntropyString.toUpperCase()}2a`;
+      const targetPassword = payload.password || `Temporary!${randomEntropyString.toUpperCase()}2a`;
 
       const securePasswordHash = await PasswordUtility.hashPassword(targetPassword);
 
@@ -69,7 +72,7 @@ export class UsersService {
   }
 
   /**
-   * Resolves an individual identity resource record by its primary key UUID string.
+   * Resolves an individual identity resource record utilizing high-performance caching (Cache-Aside Pattern).
    */
   public async getUserById(id: string, operatorContext: any): Promise<any> {
     try {
@@ -80,10 +83,19 @@ export class UsersService {
         throw new Error('ERROR_UNAUTHORIZED: Insufficient privilege profile authorization tiers.');
       }
 
+      const cacheKey = CacheKeys.getUserProfileKey(id);
+
+      const cachedUser = await this.cache.get<any>(cacheKey);
+      if (cachedUser) {
+        return cachedUser;
+      }
+
       const user = await this.repo.findById(id);
       if (!user) {
         throw new Error('ERROR_NOT_FOUND: Target identity record could not be resolved.');
       }
+
+      await this.cache.set(cacheKey, user, 3600);
 
       return user;
     } catch (error: any) {
@@ -93,7 +105,7 @@ export class UsersService {
   }
 
   /**
-   * Orchestrates partial account updates and parameter patches safely.
+   * Orchestrates partial account updates and parameter patches with automated cache eviction.
    */
   public async updateUser(id: string, payload: UpdateUserDto, operatorContext: any): Promise<any> {
     try {
@@ -120,6 +132,9 @@ export class UsersService {
 
       const updatedUser = await this.repo.update(id, payload);
 
+      const cacheKey = CacheKeys.getUserProfileKey(id);
+      await this.cache.delete(cacheKey);
+
       await this.auditRepo.create({
         userId: operatorContext.id,
         action: 'USER_MANAGEMENT_UPDATE_SUCCESS',
@@ -135,7 +150,7 @@ export class UsersService {
   }
 
   /**
-   * Executes a secure, audited identity deactivation / soft deletion protocol.
+   * Executes a secure, audited identity deactivation and enforces immediate cache invalidation.
    */
   public async deleteUser(id: string, operatorContext: any): Promise<boolean> {
     try {
@@ -158,6 +173,9 @@ export class UsersService {
       } else {
         await this.repo.update(id, { isActive: false } as any);
       }
+
+      const cacheKey = CacheKeys.getUserProfileKey(id);
+      await this.cache.delete(cacheKey);
 
       await this.auditRepo.create({
         userId: operatorContext.id,
