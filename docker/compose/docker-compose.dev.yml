@@ -1,0 +1,72 @@
+services:
+  api:
+    container_name: deployflow_api_dev
+    image: node:22.6.0-alpine3.20
+    user: "root"
+    working_dir: /usr/src/app
+    command: npm run dev
+    volumes:
+      - ../../:/usr/src/app
+      - /usr/src/app/node_modules
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - HOST=0.0.0.0
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-deployflow_admin}:${POSTGRES_PASSWORD:-df_secure_pass_2026}@postgres:5432/${POSTGRES_DB:-deployflow_db}?schema=public
+      - REDIS_URL=redis://redis:6379/0
+    networks:
+      - deployflow-dev-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  postgres:
+    container_name: deployflow_postgres_dev
+    image: postgres:16.4-alpine
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5432:5432"
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-deployflow_admin}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-df_secure_pass_2026}
+      - POSTGRES_DB=${POSTGRES_DB:-deployflow_db}
+    volumes:
+      - deployflow_dev_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-deployflow_admin} -d ${POSTGRES_DB:-deployflow_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - deployflow-dev-network
+
+  redis:
+    container_name: deployflow_redis_dev
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - deployflow_dev_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - deployflow-dev-network
+
+networks:
+  deployflow-dev-network:
+    driver: bridge
+    name: deployflow_dev_network
+
+volumes:
+  deployflow_dev_postgres_data:
+    name: deployflow_dev_postgres_data
+  deployflow_dev_redis_data:
+    name: deployflow_dev_redis_data

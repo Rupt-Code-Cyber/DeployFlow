@@ -1,0 +1,44 @@
+# ==============================================================================
+# DEPLOYFLOW ENTERPRISE CONTAINER EXCLUSIONS SPECIFICATION
+# ==============================================================================
+
+# Block standard local dependency artifacts from leaking into the build engine
+node_modules
+npm-debug.log*
+yarn-error.log
+
+# Exclude local build, bundle, or testing coverage distribution footprints
+dist
+coverage
+.nyc_output
+
+# Skip extensive architectural asset folders and system screenshots
+screenshots
+docs
+diagrams
+
+# Exclude all engineering documentation text files from production layers
+*.md
+LICENSE
+SECURITY.md
+
+# Block environment file configurations to protect infrastructure secrets
+.env
+.env.*
+!.env.example
+
+# Exclude source control engine trees and configuration directories
+.git
+.github
+.gitignore
+
+# Drop IDE metadata folders and operating system tracking files
+.idea
+.vscode
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.DS_Store
+Thumbs.db
